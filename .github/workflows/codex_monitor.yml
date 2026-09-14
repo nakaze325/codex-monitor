@@ -1,0 +1,54 @@
+name: Codex Monitor
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "preview 验证 RSS；test-email 测试邮件；monitor 正式监控"
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - test-email
+          - monitor
+
+permissions:
+  contents: write
+
+concurrency:
+  group: codex-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Offline tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run monitor
+        env:
+          PYTHONUNBUFFERED: "1"
+          TWITTER_RSS_URLS: ${{ secrets.TWITTER_RSS_URLS }}
+          QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
+          QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STATE_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_MODE: ${{ inputs.mode || 'monitor' }}
+        run: python main.py --mode "$RUN_MODE"
